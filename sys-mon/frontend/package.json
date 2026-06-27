@@ -1,0 +1,7 @@
+{
+  "name": "sys-mon-frontend",
+  "version": "0.1.0",
+  "module": "wailsjs/runtime/runtime.js",
+  "type": "module",
+  "private": true
+}

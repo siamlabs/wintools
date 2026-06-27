@@ -1,7 +1,8 @@
 // sys-mon panel — frontend entry point
 // Uses vanilla JS + DOM manipulation (no framework needed for this simple UI)
+// Calls Go backend via Wails-generated bindings (window.go.main.App)
 
-import { invoke } from '@wailsapp/runtime';
+import { ScanAndCompare, WhitelistPort, BlockPort, UpdateTrayIcon } from '../wailsjs/go/main/App.js';
 
 let state = {
   anomalies: [],
@@ -154,12 +155,12 @@ function formatAddr(p) {
 
 // Expose to global scope for inline onclick handlers
 window.whitelistPort = async (p) => {
-  await invoke('whitelist_port', { port: JSON.stringify(p) });
+  await WhitelistPort(JSON.stringify(p));
   await scanPorts();
 };
 
 window.blockPort = async (p) => {
-  await invoke('block_port', { port: JSON.stringify(p) });
+  await BlockPort(JSON.stringify(p));
   await scanPorts();
 };
 
@@ -180,7 +181,7 @@ window.showPortInfo = async (p) => {
 
 async function scanPorts() {
   try {
-    const result = await invoke('scan_and_compare', { baseline: state.selectedBaseline });
+    const result = await ScanAndCompare(state.selectedBaseline);
     const data = JSON.parse(result);
     state.anomalies = data.anomalies || [];
     state.activePorts = data.ports || [];
@@ -197,7 +198,7 @@ async function scanPorts() {
 
     // Update tray icon color
     const total = state.threatCounts.critical + state.threatCounts.high + state.threatCounts.medium;
-    invoke('update_tray_icon', { count: total });
+    UpdateTrayIcon(total);
   } catch (e) {
     console.error('Scan failed:', e);
   }

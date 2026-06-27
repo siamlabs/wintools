@@ -34,6 +34,10 @@ export function ShowToast(arg1, arg2) {
   return window['go']['main']['App']['ShowToast'](arg1, arg2);
 }
 
+export function UpdateTrayIcon(arg1) {
+  return window['go']['main']['App']['UpdateTrayIcon'](arg1);
+}
+
 export function WhitelistPort(arg1) {
   return window['go']['main']['App']['WhitelistPort'](arg1);
 }

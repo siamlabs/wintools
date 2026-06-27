@@ -17,4 +17,6 @@ export function ShowCriticalToast(arg1:string):Promise<string>;
 
 export function ShowToast(arg1:string,arg2:string):Promise<string>;
 
+export function UpdateTrayIcon(arg1:number):Promise<void>;
+
 export function WhitelistPort(arg1:string):Promise<string>;

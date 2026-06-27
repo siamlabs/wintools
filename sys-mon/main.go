@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,10 +12,14 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"sys-mon/ports"
 )
+
+//go:embed frontend
+var assets embed.FS
 
 type App struct {
 	ctx           context.Context
@@ -255,6 +260,9 @@ func main() {
 		MinHeight:        500,
 		WindowStartState: options.Normal,
 		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 255},
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  false,

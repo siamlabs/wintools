@@ -12,8 +12,14 @@ import (
 
 const baselineSchemaVersion = 1
 
+// testBaselineDir allows tests to override the baseline directory.
+var testBaselineDir string
+
 // DefaultBaselineDir returns the default baselines directory.
 func DefaultBaselineDir() string {
+	if testBaselineDir != "" {
+		return testBaselineDir
+	}
 	// Store in the same directory as the executable
 	exe, err := os.Executable()
 	if err != nil {

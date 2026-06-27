@@ -1,206 +1,162 @@
 # sys-mon
 
-> Lightweight port monitoring for Windows 11 — detect unexpected port activity.
+Lightweight port monitoring for Windows 11 — like **Procmon for network ports**.
 
-[![Windows 11](https://img.shields.io/badge/Windows-11-0078D6?style=flat&logo=windows)](https://www.microsoft.com/windows/windows-11)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
-sys-mon monitors TCP and UDP ports across IPv4 and IPv6 on Windows 11, compares them against a user-defined baseline, and alerts on anomalies. It focuses on **ports that are not normally active** — the ones that matter.
-
-## Why
-
-Malware hides in plain sight by opening ports that look normal. `netstat` shows everything but tells you nothing about what's *unexpected*. sys-mon solves that by learning what's normal on your machine and flagging what isn't.
+Download, run, and get instant visibility into what's listening on your machine.
 
 ## Features
 
-- **Port scanning** — TCP + UDP, IPv4 + IPv6
-- **Baseline comparison** — first run captures your "normal," subsequent runs show only anomalies
-- **Threat levels** — Critical → Info, computed dynamically from process, signature, and binding
-- **Named baselines** — separate baselines for work, home, after updates
-- **Floating alerts** — Windows toast notifications for Critical/High threats
-- **Task tray icon** — always-visible status with dynamic color
-- **Control panel** — small GUI with anomaly list, active ports, scheduling
-- **CLI** — `sys-mon ports check`, `sys-mon baseline save`, etc.
-- **Portable** — no installer, no registry, no runtime dependencies
+- **Real-time port scanning** — TCP/IPv4, TCP/IPv6, UDP/IPv4, UDP/IPv6
+- **Baseline comparison** — save a "known good" snapshot and detect changes
+- **Threat classification** — Critical / High / Medium / Low / Info / Gone
+- **Process resolution** — PID, process name, executable path, signature verification
+- **WSL2 detection** — auto-tags WSL2 ports to prevent false positives
+- **Named baselines** — `sys-mon baseline save work`, `sys-mon baseline save home`
+- **Whitelist** — mark ports as expected to suppress future alerts
+- **System tray icon** — dynamic color (green/red/yellow/gray) with anomaly count
+- **Windows toast notifications** — alerts for critical threats
+- **Firewall block** — one-click `netsh` deny rule creation
+- **Dual binary** — CLI (`sys-mon.exe`) + GUI panel (`sys-mon-panel.exe`)
+- **Zero dependencies** — pure Go, single binary, no runtime installs
+- **Low overhead** — <100ms startup, <2% CPU, minimal RAM
+
+## Download
+
+> **v0.1.0** — Initial release
+
+| File | Size |
+|------|------|
+| `sys-mon-0.1.0-win64.zip` | ~12 MB |
+
+Extract and run:
+- `sys-mon.exe` — CLI (port scanning, baselines, threat analysis)
+- `sys-mon-panel.exe` — GUI (tray icon, real-time monitoring, toast alerts)
 
 ## Quick Start
 
-1. **Download** the latest release
-2. **Extract** to any folder
-3. **Run as Administrator**:
-   ```
-   Right-click sys-mon-panel.exe → Run as administrator
-   ```
-   Or from CLI:
-   ```
-   sys-mon ports baseline
-   sys-mon ports check
-   ```
-
-> **Admin required** for full process name resolution. Without admin, sys-mon still works but shows PID only for unknown processes.
-
-## Screenshots
-
-### Control Panel
-
-```
-┌─────────────────────────────────────────────────┐
-│  SYS-MON  [Baseline ▼]  ● 3 anomalies           │
-├─────────────────────────────────────────────────┤
-│  🔴 Critical: 1   🟠 High: 0   🟡 Medium: 2    │
-│  🟢 Low: 0   ⚪ Gone: 0   🔵 Info: 5            │
-├─────────────────────────────────────────────────┤
-│  ANOMALIES                   ACTIVE PORTS       │
-│  ┌──────────────────────┐  ┌────────────────┐  │
-│  │ ⚠ 0.0.0.0:4444/tcp  │  │ ✓ :443/tcp    │  │
-│  │    python3 (PID 1234)│  │    nginx       │  │
-│  │    HIGH  ✕ unsigned  │  │    LOW  ✓ signed│  │
-│  │    [✓] [✕]           │  │    [i]         │  │
-│  ├──────────────────────┤  ├────────────────┤  │
-│  │ ⚠ [::]:8443/tcp     │  │ ✓ :80/tcp     │  │
-│  │    unknown (PID 9999)│  │    node        │  │
-│  │    MEDIUM  ✕ unsigned│  │    LOW  ✓ signed│  │
-│  │    [✓] [✕]           │  │    [i]         │  │
-│  └──────────────────────┘  └────────────────┘  │
-├─────────────────────────────────────────────────┤
-│  ● Running  Last: 12:34  Every: [30]s [Stop] [Refresh]│
-└─────────────────────────────────────────────────┘
-```
-
-### Task Tray
-
-| State | Icon | Tooltip |
-|-------|------|---------|
-| Normal | 🟢 | `sys-mon — 0 anomalies` |
-| Warnings | 🟡 | `sys-mon — 2 anomalies` |
-| Critical | 🔴 | `sys-mon — 1 critical!` |
-| Paused | ⚪ | `sys-mon — paused` |
-
-## CLI Reference
+### CLI
 
 ```bash
-# Baseline management
-sys-mon baseline save [name]        # save current state (default: "default")
-sys-mon baseline load [name]        # load a baseline (default: "default")
-sys-mon baseline list               # show available baselines
-sys-mon baseline delete [name]      # remove a baseline
+# Scan and compare against baseline
+sys-mon ports check default
 
-# Port operations
-sys-mon ports check [name]          # compare against baseline, show anomalies
-sys-mon ports whitelist <port> [--protocol tcp|udp] [--family ipv4|ipv6]
-sys-mon ports list                  # full port inventory
-sys-mon ports watch --interval 30s  # continuous watch mode
+# Save a baseline
+sys-mon baseline save work
+
+# List baselines
+sys-mon baseline list
+
+# Delete a baseline
+sys-mon baseline delete work
 ```
 
-## Threat Levels
+### Panel
 
-| Level | Criteria | Action |
-|-------|----------|--------|
-| 🔴 Critical | Unknown process + high port + bound to all interfaces + unsigned | Block + investigate |
-| 🟠 High | Unknown process + any bind address + unsigned | Investigate |
-| 🟡 Medium | Known process but not whitelisted, or unsigned known process | Whitelist or investigate |
-| 🟢 Low | Whitelisted / baseline | No action |
-| ⚪ Gone | Was in baseline, now missing | Confirm expected shutdown |
-| 🔵 Info | WSL2 port / system port / firewall port | Informational |
+Run `sys-mon-panel.exe` to start the tray-based monitor:
 
-## Resource Profile
-
-| Metric | Value |
-|--------|-------|
-| Idle memory (CLI) | ~5 MB |
-| Idle memory (panel) | ~15-20 MB |
-| CPU (idle) | ~0% |
-| CPU (per scan) | <1% for ~10ms |
-| Disk (total) | ~5-20 MB |
-| Startup | <100ms |
-
-## How It Works
-
-1. **Scan** — queries `netstat -ano` for all listening ports
-2. **Resolve** — maps PID → process name, path, parent PID, command line
-3. **Detect** — checks for WSL2 processes, auto-tags them
-4. **Compare** — diffs against the loaded baseline
-5. **Classify** — assigns threat level based on process, signature, binding, and protocol
-6. **Alert** — shows in panel, sends toast for Critical/High, updates tray icon
-
-## Building from Source
-
-### Prerequisites
-
-- [Go 1.21+](https://go.dev/dl/) — the only dependency
-- [Wails CLI](https://wails.io/docs/gettingstarted/installation/) — `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-
-### Build CLI only
-
-```bash
-cd wintools/sys-mon
-go build -o sys-mon.exe .
-```
-
-### Build panel (GUI)
-
-```bash
-cd wintools/sys-mon
-wails build
-# Output: target/bundle/windows/sys-mon-panel.exe
-```
-
-### Quick Test (CLI only)
-
-```bash
-# Capture your current ports as baseline
-sys-mon baseline save
-
-# Then check
-sys-mon ports check
-```
+1. Tray icon appears (green = clean, red = anomalies)
+2. Right-click tray icon for menu (Open Panel, Start/Stop, Scan Now, Settings)
+3. Click "Open Panel" for the full dashboard
+4. Click "Whitelist" or "Block" on any anomaly
 
 ## Architecture
 
 ```
-wintools/sys-mon/
-├── main.go              # Wails app entry point + tray icon
+sys-mon/
 ├── cmd/
-│   └── main.go          # CLI entry point (separate binary)
+│   └── main.go          # CLI entry point
 ├── ports/
-│   ├── types.go          # PortInfo, Baseline, Anomaly types
-│   ├── collector_windows.go # netstat-based port scanning
-│   ├── process_windows.go  # PID → process name, path, parent, cmdline
-│   ├── baseline.go       # baseline capture/save/load/compare/migrate
-│   ├── threat.go         # threat level classification
-│   ├── wsl2.go           # WSL2 detection
-│   ├── signer.go         # binary signature verification
-│   └── alert.go          # text output formatting
-├── frontend/             # Wails webview UI (HTML/CSS/JS)
+│   ├── types.go          # Data types (PortInfo, Baseline, Anomaly)
+│   ├── collector_windows.go  # netstat -ano parsing + deduplication
+│   ├── process_windows.go    # Process resolution (tasklist, wmic)
+│   ├── signer_windows.go     # signtool signature verification
+│   ├── baseline.go         # Save/load/list/delete baselines
+│   ├── alert.go            # Text output formatter
+│   └── baseline_test.go    # Unit tests (25 tests)
+├── main.go               # Wails panel entry point
+├── frontend/
 │   ├── index.html        # Dark-themed UI
-│   └── src/
-│       └── main.js       # DOM-based UI, Wails IPC calls
-├── wails.json            # Wails build config
+│   └── src/main.js       # Vanilla JS frontend
 ├── config/
-│   └── baselines/        # named baseline storage
-├── tests/
+│   └── baselines/        # Saved baseline JSON files
+├── wails.json            # Wails build config
+├── go.mod
 └── README.md
 ```
 
-## Comparison
+## Threat Classification
 
-| Tool | What it does | What sys-mon adds |
-|------|-------------|-------------------|
-| `netstat` | Lists all ports | Baseline diff, threat levels |
-| `tcpview` | GUI port viewer | Anomaly detection, alerts |
-| Procmon | Kernel-level tracing | No driver, lightweight, port-focused |
-| Windows Firewall | Manages rules | Detects before you need to block |
+| Level | Condition |
+|-------|-----------|
+| 🔴 Critical | Unknown process + High port + All interfaces + Unsigned |
+| 🟠 High | Unknown process + Unsigned binary |
+| 🟡 Medium | Known but not whitelisted OR Unsigned known process |
+| 🟢 Low | Whitelisted / matches baseline |
+| ⚪ Gone | Was in baseline, now missing |
+| 🔵 Info | WSL2 / System / Firewall ports |
+
+**UDP handling**: UDP anomalies default one threat level lower than TCP (lower C2 risk).
+
+## Baseline JSON Schema
+
+```json
+{
+  "version": 1,
+  "name": "default",
+  "captured_at": "2026-06-27T00:00:00Z",
+  "hostname": "DESKTOP-12345",
+  "admin": true,
+  "ports": [
+    {
+      "address": "0.0.0.0",
+      "port": 443,
+      "protocol": "tcp",
+      "family": "ipv4",
+      "pid": 1234,
+      "process": "nginx",
+      "whitelisted": false,
+      "signed": true,
+      "publisher": "Let's Encrypt",
+      "wsl2": false
+    }
+  ]
+}
+```
+
+## Building from Source
+
+```bash
+# Install Wails CLI
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+# Build CLI
+go build -o sys-mon.exe ./cmd/
+
+# Build Panel
+wails build
+```
+
+## Testing
+
+```bash
+go test ./ports/ -v
+```
+
+25 tests covering: port keying, threat classification, baseline save/load/delete,
+version migration, deduplication, signature checking, and process resolution.
+
+## Technical Details
+
+- **Port enumeration**: `netstat -ano` parsing with key-based deduplication
+  (`proto/family/address:port`)
+- **Process resolution**: `tasklist /FO JSON` + `wmic process where pid=X get`
+- **Signature verification**: `signtool verify /pa` for real publisher names
+- **WSL2 detection**: PID matching against WSL2 VM processes
+- **Tray icon**: Win32 `Shell_NotifyIconW` API
+- **Toast notifications**: PowerShell COM API (`Windows.UI.Notifications`)
+- **Firewall block**: `netsh advfirewall firewall add rule`
+- **Distribution**: Single `.zip` extract-and-run, no installer
 
 ## License
 
-MIT — use it, modify it, share it.
-
-## Contributing
-
-Issues and PRs welcome. For new features, open an issue first to discuss.
-
-## Acknowledgments
-
-- [Sysinternals](https://learn.microsoft.com/en-us/sysinternals/) — inspiration for portable Windows tools
-- [Wails](https://wails.io/) — for the lightweight Go + webview framework
-- [netstat](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netstat) — Windows built-in port enumeration
+MIT

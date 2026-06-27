@@ -1,0 +1,8 @@
+{
+  "name": "sys-mon-panel",
+  "output_filename": "sys-mon-panel.exe",
+  "frontend_dir": "frontend",
+  "build:windows": {
+    "icon": "frontend/public/icon.png"
+  }
+}

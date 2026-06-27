@@ -9,6 +9,7 @@ import (
 )
 
 // GetPorts scans all TCP/UDP ports on IPv4 and IPv6 using netstat.
+// Returns deduplicated port list — only one entry per unique (address, port, protocol, family).
 func GetPorts() ([]PortInfo, error) {
 	cmd := exec.Command("netstat", "-ano")
 	output, err := cmd.Output()
@@ -16,6 +17,8 @@ func GetPorts() ([]PortInfo, error) {
 		return nil, fmt.Errorf("netstat failed: %w", err)
 	}
 
+	// Dedup key: "proto/family/address:port"
+	seen := make(map[string]bool)
 	var ports []PortInfo
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
@@ -27,6 +30,18 @@ func GetPorts() ([]PortInfo, error) {
 		if err != nil {
 			continue
 		}
+
+		// Skip entries with PID 0 (system/listening sockets with no process)
+		if p.PID == 0 {
+			continue
+		}
+
+		key := fmt.Sprintf("%s/%s/%s:%d", p.Protocol, p.Family, p.Address, p.Port)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
 		ports = append(ports, p)
 	}
 	return ports, nil

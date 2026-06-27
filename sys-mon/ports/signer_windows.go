@@ -1,8 +1,7 @@
 package ports
 
 import (
-	"fmt"
-	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -13,24 +12,39 @@ func CheckSignature(path string) (bool, string) {
 	}
 
 	// Check if file exists
-	_, err := os.Stat(path)
+	if _, err := exec.Command("cmd", "/c", "dir", path).Output(); err != nil {
+		return false, ""
+	}
+
+	// Use signtool to verify signature
+	cmd := exec.Command("signtool", "verify", "/pa", path)
+	output, err := cmd.Output()
 	if err != nil {
 		return false, ""
 	}
 
-	// signtool verify would require CGo or an external call.
-	// For now, we mark based on Windows trust store lookup.
-	// This is a placeholder — real implementation would call:
-	//   signtool verify /pa <path>
-	// or use CryptQueryObject via syscall.
-
-	// Simple heuristic: check if the file exists and is not a system temp file
-	if strings.Contains(path, "Temp") || strings.Contains(path, "tmp") {
-		return false, ""
+	// Parse publisher from output
+	// signtool output: "Issuer: Microsoft Corporation" or "Signer: ..."
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "issuer:") {
+			publisher := strings.TrimSpace(strings.TrimPrefix(line, "Issuer:"))
+			if publisher != "" {
+				return true, publisher
+			}
+		}
+		if strings.HasPrefix(strings.ToLower(line), "signer:") {
+			publisher := strings.TrimSpace(strings.TrimPrefix(line, "Signer:"))
+			if publisher != "" {
+				return true, publisher
+			}
+		}
 	}
 
-	// For a real implementation, you'd call:
-	//   exec.Command("signtool", "verify", "/pa", path)
-	// and parse the output for the signer name.
+	// If signtool succeeded but we couldn't parse publisher, it's still signed
+	if err == nil {
+		return true, "Unknown Publisher"
+	}
+
 	return false, ""
 }

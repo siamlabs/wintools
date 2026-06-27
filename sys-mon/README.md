@@ -19,7 +19,7 @@ Malware hides in plain sight by opening ports that look normal. `netstat` shows 
 - **Named baselines** — separate baselines for work, home, after updates
 - **Floating alerts** — Windows toast notifications for Critical/High threats
 - **Task tray icon** — always-visible status with dynamic color
-- **Control panel** — small Tauri GUI with anomaly list, active ports, scheduling
+- **Control panel** — small GUI with anomaly list, active ports, scheduling
 - **CLI** — `sys-mon ports check`, `sys-mon baseline save`, etc.
 - **Portable** — no installer, no registry, no runtime dependencies
 
@@ -45,27 +45,25 @@ Malware hides in plain sight by opening ports that look normal. `netstat` shows 
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  SYS-MON  [Baseline] [Settings]  ● 3 anomalies  │
+│  SYS-MON  [Baseline ▼]  ● 3 anomalies           │
 ├─────────────────────────────────────────────────┤
-│  THREAT SUMMARY                                 │
-│  🔴 Critical: 1   🟡 Medium: 2   🟢 Normal: 47  │
+│  🔴 Critical: 1   🟠 High: 0   🟡 Medium: 2    │
+│  🟢 Low: 0   ⚪ Gone: 0   🔵 Info: 5            │
 ├─────────────────────────────────────────────────┤
 │  ANOMALIES                   ACTIVE PORTS       │
 │  ┌──────────────────────┐  ┌────────────────┐  │
 │  │ ⚠ 0.0.0.0:4444/tcp  │  │ ✓ :443/tcp    │  │
 │  │    python3 (PID 1234)│  │    nginx       │  │
-│  │    Threat: HIGH      │  │    Threat: LOW │  │
-│  │    [Whitelist] [Block]│  │    [Info]      │  │
+│  │    HIGH  ✕ unsigned  │  │    LOW  ✓ signed│  │
+│  │    [✓] [✕]           │  │    [i]         │  │
 │  ├──────────────────────┤  ├────────────────┤  │
 │  │ ⚠ [::]:8443/tcp     │  │ ✓ :80/tcp     │  │
 │  │    unknown (PID 9999)│  │    node        │  │
-│  │    Threat: MEDIUM    │  │    Threat: LOW │  │
-│  │    [Whitelist] [Block]│  │    [Info]      │  │
+│  │    MEDIUM  ✕ unsigned│  │    LOW  ✓ signed│  │
+│  │    [✓] [✕]           │  │    [i]         │  │
 │  └──────────────────────┘  └────────────────┘  │
 ├─────────────────────────────────────────────────┤
-│  SCHEDULE    │  STATUS                           │
-│  Every: [30]s│  ● Running  Last check: 12:34:56 │
-│  [Start] [Stop]│  Uptime: 2h 14m                 │
+│  ● Running  Last: 12:34  Every: [30]s [Stop] [Refresh]│
 └─────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +86,7 @@ sys-mon baseline list               # show available baselines
 sys-mon baseline delete [name]      # remove a baseline
 
 # Port operations
-sys-mon ports check                 # compare against baseline, show anomalies
+sys-mon ports check [name]          # compare against baseline, show anomalies
 sys-mon ports whitelist <port> [--protocol tcp|udp] [--family ipv4|ipv6]
 sys-mon ports list                  # full port inventory
 sys-mon ports watch --interval 30s  # continuous watch mode
@@ -110,17 +108,16 @@ sys-mon ports watch --interval 30s  # continuous watch mode
 | Metric | Value |
 |--------|-------|
 | Idle memory (CLI) | ~5 MB |
-| Idle memory (panel minimized) | ~15 MB |
-| Idle memory (panel open) | ~40 MB |
+| Idle memory (panel) | ~15-20 MB |
 | CPU (idle) | ~0% |
 | CPU (per scan) | <1% for ~10ms |
-| Disk (total) | ~2 MB |
+| Disk (total) | ~5-20 MB |
 | Startup | <100ms |
 
 ## How It Works
 
-1. **Scan** — queries `iphlpapi.dll` (`GetTcpTable2`, `GetTcp6Table2`, `GetUdpTable`, `GetUdp6Table`) for all listening ports
-2. **Resolve** — maps PID → process name, path, signature (requires admin for full info)
+1. **Scan** — queries `netstat -ano` for all listening ports
+2. **Resolve** — maps PID → process name, path, parent PID, command line
 3. **Detect** — checks for WSL2 processes, auto-tags them
 4. **Compare** — diffs against the loaded baseline
 5. **Classify** — assigns threat level based on process, signature, binding, and protocol
@@ -130,52 +127,57 @@ sys-mon ports watch --interval 30s  # continuous watch mode
 
 ### Prerequisites
 
-- [Go 1.21+](https://go.dev/dl/)
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI](https://v2.tauri.app/start/prerequisites/)
-- [Node.js 18+](https://nodejs.org/) (for Svelte frontend)
+- [Go 1.21+](https://go.dev/dl/) — the only dependency
+- [Wails CLI](https://wails.io/docs/gettingstarted/installation/) — `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
-### CLI
+### Build CLI only
 
 ```bash
 cd wintools/sys-mon
-go build -o sys-mon.exe ./cmd/
+go build -o sys-mon.exe .
 ```
 
-### Control Panel
+### Build panel (GUI)
 
 ```bash
-cd wintools/sys-mon/panel
-cargo tauri dev        # development
-cargo tauri build      # production (creates dist/)
+cd wintools/sys-mon
+wails build
+# Output: target/bundle/windows/sys-mon-panel.exe
+```
+
+### Quick Test (CLI only)
+
+```bash
+# Capture your current ports as baseline
+sys-mon baseline save
+
+# Then check
+sys-mon ports check
 ```
 
 ## Architecture
 
 ```
 wintools/sys-mon/
+├── main.go              # Wails app entry point + tray icon
 ├── cmd/
-│   └── main.go            # CLI entry point
+│   └── main.go          # CLI entry point (separate binary)
 ├── ports/
-│   ├── collector.go        # iphlpapi port enumeration
-│   ├── collector_windows.go # process name resolution
-│   ├── baseline.go         # baseline capture/save/load/compare/migrate
-│   ├── threat.go           # threat level classification
-│   ├── wsl2.go             # WSL2 detection
-│   ├── signer.go           # binary signature verification
-│   └── alert.go            # text output + toast logic
-├── panel/                  # Tauri GUI
-│   ├── src/
-│   │   ├── App.svelte      # main panel UI
-│   │   ├── store.js        # port data store, refresh logic
-│   │   ├── toast.js        # Windows toast integration
-│   │   └── tray.js         # tray icon state management
-│   ├── tauri.conf.json     # Tauri config
-│   └── Cargo.toml          # Rust Tauri backend
-│       └── src/
-│           └── main.rs     # tray icon, menu, IPC to Go
+│   ├── types.go          # PortInfo, Baseline, Anomaly types
+│   ├── collector_windows.go # netstat-based port scanning
+│   ├── process_windows.go  # PID → process name, path, parent, cmdline
+│   ├── baseline.go       # baseline capture/save/load/compare/migrate
+│   ├── threat.go         # threat level classification
+│   ├── wsl2.go           # WSL2 detection
+│   ├── signer.go         # binary signature verification
+│   └── alert.go          # text output formatting
+├── frontend/             # Wails webview UI (HTML/CSS/JS)
+│   ├── index.html        # Dark-themed UI
+│   └── src/
+│       └── main.js       # DOM-based UI, Wails IPC calls
+├── wails.json            # Wails build config
 ├── config/
-│   └── baselines/          # named baseline storage
+│   └── baselines/        # named baseline storage
 ├── tests/
 └── README.md
 ```
@@ -200,5 +202,5 @@ Issues and PRs welcome. For new features, open an issue first to discuss.
 ## Acknowledgments
 
 - [Sysinternals](https://learn.microsoft.com/en-us/sysinternals/) — inspiration for portable Windows tools
-- [Tauri](https://tauri.app/) — for the lightweight GUI framework
-- [iphlpapi](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/) — Windows API for port enumeration
+- [Wails](https://wails.io/) — for the lightweight Go + webview framework
+- [netstat](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netstat) — Windows built-in port enumeration

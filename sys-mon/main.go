@@ -7,29 +7,95 @@ import (
 	"log"
 	"os/exec"
 	"strings"
-	"syscall"
-	"unsafe"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"sys-mon/ports"
 )
 
-type App struct{}
+type App struct {
+	ctx           context.Context
+	trayMenu      *menu.TrayMenu
+	anomalyCount  int
+}
 
 func NewApp() *App {
 	return &App{}
 }
 
 func (a *App) Startup(ctx context.Context) {
-	_ = ctx
-	createTrayIcon()
+	a.ctx = ctx
+
+	// Create the tray menu
+	trayMenu := &menu.TrayMenu{
+		Label:   "sys-mon",
+		Image:   "green",
+		Tooltip: "sys-mon — 0 anomalies",
+	}
+
+	// Create the menu items
+	m := menu.NewMenu()
+
+	// Open Panel
+	m.AddText("Open Panel", nil, func(_ *menu.CallbackData) {
+		runtime.WindowShow(a.ctx)
+	})
+
+	m.AddSeparator()
+
+	// Scan Now
+	m.AddText("Scan Now", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "scan-now", "")
+	})
+
+	m.AddSeparator()
+
+	// Baseline Status (sub-menu)
+	baselineMenu := menu.NewMenu()
+	baselineMenu.AddText("Save Baseline", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(a.ctx, "baseline-save", "")
+	})
+	m.Append(&menu.MenuItem{
+		Label: "Baseline",
+		SubMenu: baselineMenu,
+	})
+
+	m.AddSeparator()
+
+	// Exit
+	m.AddText("Exit", nil, func(_ *menu.CallbackData) {
+		runtime.Quit(a.ctx)
+	})
+
+	trayMenu.Menu = m
+	a.trayMenu = trayMenu
 }
 
 func (a *App) Shutdown(ctx context.Context) {
-	_ = ctx
-	removeTrayIcon()
+}
+
+// UpdateTrayIcon is called from the frontend to update the tray icon color.
+func (a *App) UpdateTrayIcon(anomalyCount int) {
+	a.anomalyCount = anomalyCount
+
+	// Determine icon color
+	color := "green"
+	if anomalyCount > 0 {
+		color = "red"
+	}
+
+	// Update the tray menu's Image and Tooltip fields
+	a.trayMenu.Image = color
+	a.trayMenu.Tooltip = fmt.Sprintf("sys-mon — %d anomalies", anomalyCount)
+
+	// Tell the frontend to update the UI badge
+	runtime.EventsEmit(a.ctx, "tray-icon-updated", map[string]interface{}{
+		"color": color,
+		"count": anomalyCount,
+	})
 }
 
 // ScanAndCompare scans ports and compares against baseline.
@@ -169,11 +235,11 @@ func (a *App) GetBaselineStatus() (string, error) {
 		return `{"name":"none","ports":0}`, nil
 	}
 	data, _ := json.Marshal(map[string]interface{}{
-		"name":          b.Name,
-		"ports":         len(b.Ports),
-		"captured_at":   b.CapturedAt,
-		"hostname":      b.Hostname,
-		"admin":         b.Admin,
+		"name":        b.Name,
+		"ports":       len(b.Ports),
+		"captured_at": b.CapturedAt,
+		"hostname":    b.Hostname,
+		"admin":       b.Admin,
 	})
 	return string(data), nil
 }
@@ -206,75 +272,9 @@ func main() {
 	}
 }
 
-// ===== Windows Tray Icon =====
-
-var (
-	kernel32       = syscall.NewLazyDLL("kernel32.dll")
-	user32         = syscall.NewLazyDLL("user32.dll")
-	shell32        = syscall.NewLazyDLL("shell32.dll")
-	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
-)
-
-const (
-	NIM_ADD    = 0x00000000
-	NIM_MODIFY = 0x00000001
-	NIM_DELETE = 0x00000002
-	NIF_ICON   = 0x00000002
-	NIF_TIP    = 0x00000004
-	NIF_MESSAGE = 0x00000001
-)
-
-type NOTIFYICONDATA struct {
-	cbSize       uint32
-	HWnd         uintptr
-	UID          uint32
-	UFlags       uint32
-	UCallbackMsg uint32
-	HIcon        uintptr
-	SzTip        [128]uint16
-	DWState      uint32
-	DWStateMask  uint32
-	SzInfo       [256]uint16
-	NVersion     uint32
-	SzInfoTitle  [64]uint16
-	DWInfoFlags  uint32
-	GuidItem     [16]byte
-	HBalloonIcon uintptr
-}
-
-var trayIcon NOTIFYICONDATA
-
-func createTrayIcon() {
-	getModuleHandle := kernel32.NewProc("GetModuleHandleW")
-	hInst, _, _ := getModuleHandle.Call(0)
-
-	trayIcon = NOTIFYICONDATA{
-		cbSize:       uint32(unsafe.Sizeof(NOTIFYICONDATA{})),
-		HWnd:         0,
-		UID:          1000,
-		UFlags:       NIF_ICON | NIF_TIP,
-		UCallbackMsg: 0x0400,
-		HIcon:        hInst,
-		SzTip:        [128]uint16{},
-	}
-
-	tip := "sys-mon"
-	for i, c := range tip {
-		trayIcon.SzTip[i] = uint16(c)
-	}
-
-	procShellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&trayIcon)))
-}
-
-func removeTrayIcon() {
-	trayIcon.UFlags = 0
-	procShellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&trayIcon)))
-}
-
 // ===== Windows Toast Notifications =====
 
 func showToast(title, message string) (string, error) {
-	// Use PowerShell to show a Windows toast notification
 	psScript := fmt.Sprintf(`
 		[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 		[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null
@@ -300,7 +300,6 @@ func showToast(title, message string) (string, error) {
 		return "toast_failed", err
 	}
 
-	// Don't wait — toast should appear immediately
 	go cmd.Wait()
 
 	return "shown", nil

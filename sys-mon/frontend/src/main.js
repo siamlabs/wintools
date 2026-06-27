@@ -194,6 +194,10 @@ async function scanPorts() {
       info: state.anomalies.filter(a => a.threat === 'info').length,
     };
     render();
+
+    // Update tray icon color
+    const total = state.threatCounts.critical + state.threatCounts.high + state.threatCounts.medium;
+    invoke('update_tray_icon', { count: total });
   } catch (e) {
     console.error('Scan failed:', e);
   }
